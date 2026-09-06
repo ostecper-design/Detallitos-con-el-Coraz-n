@@ -11,8 +11,8 @@ st.title("📱 Cotizador en la Nube")
 
 # Enlace de tu Google Sheets (Formateado para exportar directamente cada pestaña)
 SHEET_ID = "1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0"
-URL_LISTADO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=listado"
-URL_COTIZADOR = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=cotizador"
+URL_LISTADO = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=listado"
+URL_COTIZADOR = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=cotizador"
 
 # 1. Cargar base de datos desde Google Sheets
 @st.cache_data(ttl=60)  # Se actualiza cada 60 segundos si haces cambios en tu Drive
@@ -27,7 +27,8 @@ def cargar_datos():
         
         # Filtrar filas vacías, totales o notas de ingredientes abajo
         listado = listado.dropna(subset=['PRODUCTOS'])
-        listado = listado[listado['PRODUCTOS'].str.strip() != '']
+        listado['PRODUCTOS'] = listado['PRODUCTOS'].astype(str).str.strip()
+        listado = listado[listado['PRODUCTOS'] != '']
         listado = listado[~listado['PRODUCTOS'].str.contains('TOTAL|QUESO|JAMON|MAYONESA|PAN|LECHUGA', case=False, na=False)]
         
         # Limpiar los precios quitando el símbolo "$" y comas
@@ -52,12 +53,18 @@ if 'carrito' not in st.session_state:
 # 2. Sección de Selección de Productos
 st.header("🛒 Agregar a la Cotización")
 
-lista_productos = df_productos['PRODUCTOS'].str.strip().tolist()
+lista_productos = df_productos['PRODUCTOS'].tolist()
 producto_seleccionado = st.selectbox("Selecciona un producto:", lista_productos)
 
-# Buscar el precio sugerido
-filtro_precio = df_productos[df_productos['PRODUCTOS'].str.strip() == producto_seleccionado]['COSTO_LIMPIO'].values
-precio_sugerido = float(filtro_precio) if len(filtro_precio) > 0 else 0.0
+# CORRECCIÓN AQUÍ: Extraer el precio de forma segura tomando solo el primer elemento numérico
+filtro_precio = df_productos[df_productos['PRODUCTOS'] == producto_seleccionado]['COSTO_LIMPIO'].values
+if len(filtro_precio) > 0:
+    try:
+        precio_sugerido = float(filtro_precio[0])
+    except:
+        precio_sugerido = 0.0
+else:
+    precio_sugerido = 0.0
 
 col1, col2 = st.columns(2)
 with col1:
@@ -93,7 +100,6 @@ if len(st.session_state.carrito) > 0:
             
     with col_btn2:
         if st.button("💾 Guardar Cotización", use_container_width=True):
-            # Nota sobre el guardado en la nube pública
             st.success("¡Estructura de cotización lista!")
             st.info("Para habilitar la escritura directa en tu Drive desde el servidor de la nube, daremos el paso final en la plataforma de Streamlit.")
             st.session_state.carrito = []
