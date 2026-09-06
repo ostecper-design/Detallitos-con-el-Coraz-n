@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import requests
 from io import StringIO
 import urllib.parse
@@ -10,15 +9,14 @@ st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="cent
 
 st.title("📱 Cotizador en la Nube")
 
-# ENLACES CORREGIDOS (con la diagonal '/' correspondiente)
-SHEET_ID = "1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0"
-URL_LISTADO = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=listado"
+# ENLACE DIRECTO CORREGIDO Y COMPROBADO
+URL_LISTADO = "https://google.com"
 
 # 1. Cargar base de datos desde Google Sheets
-@st.cache_data(ttl=30)  # Se actualiza rápido si cambias precios en Drive
+@st.cache_data(ttl=5)  # Bajamos el tiempo para que lea los cambios casi de inmediato
 def cargar_datos():
     try:
-        # Descargar los datos desde el enlace de Google
+        # Descargar los datos desde el enlace directo de Google
         respuesta = requests.get(URL_LISTADO)
         listado = pd.read_csv(StringIO(respuesta.text))
         
@@ -53,7 +51,7 @@ if 'carrito' not in st.session_state:
 # 2. Sección de Selección de Productos
 st.header("🛒 Agregar a la Cotización")
 
-# Agregar un campo opcional para el nombre del cliente
+# Campo opcional para el nombre del cliente
 nombre_cliente = st.text_input("👤 Nombre del Cliente (Opcional):", placeholder="Ej. María López")
 
 lista_productos = df_productos['PRODUCTOS'].tolist()
@@ -90,7 +88,7 @@ if len(st.session_state.carrito) > 0:
     st.metric(label="Gran Total", value=f"${gran_total:,.2f}")
     
     # --- CONSTRUIR TEXTO PARA WHATSAPP ---
-    saludo = f"¡Hola! Te comparto la cotización."
+    saludo = "¡Hola! Te comparto la cotización."
     if nombre_cliente:
         saludo = f"¡Hola *{nombre_cliente}*! Te comparto tu cotización."
         
@@ -99,7 +97,6 @@ if len(st.session_state.carrito) > 0:
         mensaje_wa += f"• {item['Cantidad']}x {item['PRODUCTOS']} - ${item['Total']:,.2f}\n"
     
     mensaje_wa += f"\n*Gran Total: ${gran_total:,.2f}*"
-    # Codificar el texto para que la URL de WhatsApp lo acepte de forma segura
     texto_codificado = urllib.parse.quote(mensaje_wa)
     enlace_whatsapp = f"https://wa.me{texto_codificado}"
     
@@ -111,7 +108,6 @@ if len(st.session_state.carrito) > 0:
             st.rerun()
             
     with col_btn2:
-        # Botón con diseño de enlace que abre WhatsApp directamente
         st.markdown(
             f'<a href="{enlace_whatsapp}" target="_blank" style="text-decoration:none;"><button style="width:100%; background-color:#25D366; color:white; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">💬 Enviar por WhatsApp</button></a>',
             unsafe_allow_html=True
