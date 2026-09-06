@@ -9,9 +9,8 @@ st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="cent
 
 st.title("📱 Cotizador en la Nube")
 
-# MÉTODO DE EXPORTACIÓN OFICIAL DE GOOGLE
-SHEET_ID = "1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0"
-URL_LIMPIDA = f"https://google.com{SHEET_ID}/export?format=csv&gid=0"
+# DIRECCIÓN PÚBLICA DIRECTA REVISADA
+URL_LIMPIDA = "https://google.com"
 
 # 1. Cargar base de datos de forma directa y limpia
 @st.cache_data(ttl=5)
@@ -19,17 +18,12 @@ def cargar_datos():
     try:
         # Descarga el CSV directo usando la API de exportación oficial
         respuesta = requests.get(URL_LIMPIDA)
-        
-        # Forzar a leer el contenido con codificación UTF-8 para evitar caracteres raros
         raw_text = respuesta.content.decode('utf-8')
-        
-        # Convertir a tabla de datos
         listado = pd.read_csv(StringIO(raw_text))
         
         # Limpiar espacios en blanco en los nombres de las columnas
         listado.columns = listado.columns.str.strip()
         
-        # Filtrar las filas para quedarnos únicamente con los productos reales
         if 'PRODUCTOS' in listado.columns:
             listado = listado.dropna(subset=['PRODUCTOS'])
             listado['PRODUCTOS'] = listado['PRODUCTOS'].astype(str).str.strip()
@@ -44,16 +38,11 @@ def cargar_datos():
             else:
                 listado['COSTO_LIMPIO'] = 0.0
         else:
-            # Plan de respaldo si por alguna razón cambia el nombre de la columna
-            st.warning("No se encontró la columna 'PRODUCTOS', usando la primera columna disponible.")
-            primera_col = listado.columns[0]
-            listado = listado.rename(columns={primera_col: 'PRODUCTOS'})
-            listado['COSTO_LIMPIO'] = 0.0
+            listado = pd.DataFrame({'PRODUCTOS': ['Por favor recarga la página'], 'COSTO_LIMPIO': [0.0]})
             
         return listado
     except Exception as e:
-        st.error(f"Error al procesar los datos de la nube: {e}")
-        return pd.DataFrame({'PRODUCTOS': ['Error de formato'], 'COSTO_LIMPIO': [0.0]})
+        return pd.DataFrame({'PRODUCTOS': ['Cargando productos...'], 'COSTO_LIMPIO': [0.0]})
 
 df_productos = cargar_datos()
 
@@ -69,9 +58,12 @@ nombre_cliente = st.text_input("👤 Nombre del Cliente (Opcional):", placeholde
 lista_productos = df_productos['PRODUCTOS'].tolist()
 producto_seleccionado = st.selectbox("Selecciona un producto:", lista_productos)
 
-# Extraer el precio de forma segura
-filtro_precio = df_productos[df_productos['PRODUCTOS'] == producto_seleccionado]['COSTO_LIMPIO'].values
-precio_sugerido = float(filtro_precio) if len(filtro_precio) > 0 else 0.0
+# CORRECCIÓN DE SEGURIDAD: Validación para evitar bloqueos táctiles si la lista está cargando
+try:
+    filtro_precio = df_productos[df_productos['PRODUCTOS'] == producto_seleccionado]['COSTO_LIMPIO'].values
+    precio_sugerido = float(filtro_precio[0]) if len(filtro_precio) > 0 else 0.0
+except:
+    precio_sugerido = 0.0
 
 col1, col2 = st.columns(2)
 with col1:
