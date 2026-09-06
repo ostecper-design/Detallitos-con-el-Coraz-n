@@ -9,15 +9,15 @@ st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="cent
 
 st.title("📱 Cotizador en la Nube")
 
-# DIRECCIÓN PÚBLICA DIRECTA REVISADA
-URL_UNIVERSAL = "https://docs.google.com/spreadsheets/d/1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0/edit?gid=0#gid=0"
+# TU ENLACE CORRECTO CONFIGURADO PARA DESCARGA DIRECTA
+URL_UNIVERSAL = "https://google.com"
 
 # 1. Cargar base de datos de forma directa y limpia
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2)
 def cargar_datos():
     try:
-        # Descarga el CSV directo usando la API de exportación oficial
-        respuesta = requests.get(URL_LIMPIDA)
+        # Descarga el CSV directo usando tu enlace público revisado
+        respuesta = requests.get(URL_UNIVERSAL)
         raw_text = respuesta.content.decode('utf-8')
         listado = pd.read_csv(StringIO(raw_text))
         
@@ -38,11 +38,14 @@ def cargar_datos():
             else:
                 listado['COSTO_LIMPIO'] = 0.0
         else:
-            listado = pd.DataFrame({'PRODUCTOS': ['Por favor recarga la página'], 'COSTO_LIMPIO': [0.0]})
+            # Plan de respaldo por si las columnas vienen distintas
+            primera_col = listado.columns if len(listado.columns) > 0 else 'PRODUCTOS'
+            listado = listado.rename(columns={primera_col: 'PRODUCTOS'})
+            listado['COSTO_LIMPIO'] = 0.0
             
         return listado
     except Exception as e:
-        return pd.DataFrame({'PRODUCTOS': ['Cargando productos...'], 'COSTO_LIMPIO': [0.0]})
+        return pd.DataFrame({'PRODUCTOS': ['Error al conectar con Drive'], 'COSTO_LIMPIO': [0.0]})
 
 df_productos = cargar_datos()
 
@@ -58,10 +61,10 @@ nombre_cliente = st.text_input("👤 Nombre del Cliente (Opcional):", placeholde
 lista_productos = df_productos['PRODUCTOS'].tolist()
 producto_seleccionado = st.selectbox("Selecciona un producto:", lista_productos)
 
-# CORRECCIÓN DE SEGURIDAD: Validación para evitar bloqueos táctiles si la lista está cargando
+# Extraer el precio de forma segura
 try:
     filtro_precio = df_productos[df_productos['PRODUCTOS'] == producto_seleccionado]['COSTO_LIMPIO'].values
-    precio_sugerido = float(filtro_precio[0]) if len(filtro_precio) > 0 else 0.0
+    precio_sugerido = float(filtro_precio) if len(filtro_precio) > 0 else 0.0
 except:
     precio_sugerido = 0.0
 
