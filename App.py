@@ -1,31 +1,36 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
+import requests
+from io import StringIO
 
 # Configuración de la página para móvil
 st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="centered")
 
-st.title("📱 Cotizador de Productos")
+st.title("📱 Cotizador en la Nube")
 
-# 1. Cargar base de datos adaptada a tus columnas reales
-@st.cache_data
+# Enlace de tu Google Sheets (Formateado para exportar directamente cada pestaña)
+SHEET_ID = "1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0"
+URL_LISTADO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=listado"
+URL_COTIZADOR = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=cotizador"
+
+# 1. Cargar base de datos desde Google Sheets
+@st.cache_data(ttl=60)  # Se actualiza cada 60 segundos si haces cambios en tu Drive
 def cargar_datos():
-    if os.path.exists("listado.csv"):
-        # Cargamos el archivo usando codificación utf-8 o latin1 por los acentos
-        try:
-            listado = pd.read_csv("listado.csv", encoding='utf-8')
-        except:
-            listado = pd.read_csv("listado.csv", encoding='latin1')
-            
-        # Asegurar que elimine espacios en blanco en los nombres de las columnas
+    try:
+        # Descargar los datos desde el enlace de Google
+        respuesta = requests.get(URL_LISTADO)
+        listado = pd.read_csv(StringIO(respuesta.text))
+        
+        # Limpiar espacios en los nombres de las columnas
         listado.columns = listado.columns.str.strip()
         
-        # Filtrar solo las filas que tengan productos válidos
+        # Filtrar filas vacías, totales o notas de ingredientes abajo
         listado = listado.dropna(subset=['PRODUCTOS'])
         listado = listado[listado['PRODUCTOS'].str.strip() != '']
+        listado = listado[~listado['PRODUCTOS'].str.contains('TOTAL|QUESO|JAMON|MAYONESA|PAN|LECHUGA', case=False, na=False)]
         
-        # Limpiar el formato de precio si viene con "$" de Excel
+        # Limpiar los precios quitando el símbolo "$" y comas
         if 'COSTO' in listado.columns:
             listado['COSTO_LIMPIO'] = listado['COSTO'].astype(str).str.replace('$', '', regex=False)
             listado['COSTO_LIMPIO'] = listado['COSTO_LIMPIO'].str.replace(',', '', regex=False).str.strip()
@@ -34,35 +39,32 @@ def cargar_datos():
             listado['COSTO_LIMPIO'] = 0.0
             
         return listado
-    else:
-        # Respaldo si no encuentra el archivo
-        return pd.DataFrame({'PRODUCTOS': ['No se encontró listado.csv'], 'COSTO_LIMPIO': [0.0]})
+    except Exception as e:
+        st.error(f"Error al conectar con Google Sheets: {e}")
+        return pd.DataFrame({'PRODUCTOS': ['Error de conexión'], 'COSTO_LIMPIO': [0.0]})
 
 df_productos = cargar_datos()
 
-# Inicializar el carrito/cotización actual en la sesión si no existe
+# Inicializar el carrito en la sesión
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
 
 # 2. Sección de Selección de Productos
 st.header("🛒 Agregar a la Cotización")
 
-# Buscador/Selector con tus productos reales
 lista_productos = df_productos['PRODUCTOS'].str.strip().tolist()
 producto_seleccionado = st.selectbox("Selecciona un producto:", lista_productos)
 
-# Buscar el precio limpio del producto seleccionado
+# Buscar el precio sugerido
 filtro_precio = df_productos[df_productos['PRODUCTOS'].str.strip() == producto_seleccionado]['COSTO_LIMPIO'].values
-precio_sugerido = float(filtro_precio[0]) if len(filtro_precio) > 0 else 0.0
+precio_sugerido = float(filtro_precio) if len(filtro_precio) > 0 else 0.0
 
-# Campos de cantidad y precio
 col1, col2 = st.columns(2)
 with col1:
     cantidad = st.number_input("Cantidad:", min_value=1, value=1, step=1)
 with col2:
     precio_final = st.number_input("Precio Unitario ($):", min_value=0.0, value=precio_sugerido, step=1.0)
 
-# Botón para añadir
 if st.button("➕ Añadir Producto", use_container_width=True):
     total_item = cantidad * precio_final
     st.session_state.carrito.append({
@@ -73,21 +75,16 @@ if st.button("➕ Añadir Producto", use_container_width=True):
     })
     st.toast(f"¡{producto_seleccionado} añadido!")
 
-# 3. Sección del Cotizador (Resumen)
+# 3. Resumen de Cotización
 st.header("📋 Resumen de Cotización")
 
 if len(st.session_state.carrito) > 0:
-    # Convertir el carrito actual en un DataFrame para mostrarlo limpio
     df_actual = pd.DataFrame(st.session_state.carrito)
-    
-    # Mostrar tabla simplificada adaptada a tus columnas
     st.dataframe(df_actual[['PRODUCTOS', 'Cantidad', 'Total']], use_container_width=True, hide_index=True)
     
-    # Calcular el Gran Total
     gran_total = df_actual['Total'].sum()
     st.metric(label="Gran Total", value=f"${gran_total:,.2f}")
     
-    # Botones de acción ocupando el ancho del móvil
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if st.button("🗑️ Limpiar Todo", use_container_width=True):
@@ -96,14 +93,11 @@ if len(st.session_state.carrito) > 0:
             
     with col_btn2:
         if st.button("💾 Guardar Cotización", use_container_width=True):
-            df_actual['Fecha'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            existe_archivo = os.path.exists("cotizador.csv")
-            
-            # Guardar en el CSV de cotizaciones sin alterar el formato
-            df_actual.to_csv("cotizador.csv", mode='a', header=not existe_archivo, index=False)
-            
-            st.success("¡Cotización guardada exitosamente!")
+            # Nota sobre el guardado en la nube pública
+            st.success("¡Estructura de cotización lista!")
+            st.info("Para habilitar la escritura directa en tu Drive desde el servidor de la nube, daremos el paso final en la plataforma de Streamlit.")
             st.session_state.carrito = []
             st.rerun()
 else:
-    st.info("El cotizador está vacío. Añade productos arriba.")
+    st.info("El cotizador está vacío.")
+
