@@ -9,53 +9,51 @@ st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="cent
 
 st.title("📱 Cotizador en la Nube")
 
-# Enlace directo para descargar todo el libro de Google Sheets
-URL_COMPLETA = "https://google.com"
+# MÉTODO DE EXPORTACIÓN OFICIAL DE GOOGLE
+SHEET_ID = "1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0"
+URL_LIMPIDA = f"https://google.com{SHEET_ID}/export?format=csv&gid=0"
 
-# 1. Cargar base de datos buscando dinámicamente las columnas reales
+# 1. Cargar base de datos de forma directa y limpia
 @st.cache_data(ttl=5)
 def cargar_datos():
     try:
-        # Descargar los datos desde el enlace de Google
-        respuesta = requests.get(URL_COMPLETA)
-        raw_data = respuesta.text
+        # Descarga el CSV directo usando la API de exportación oficial
+        respuesta = requests.get(URL_LIMPIDA)
         
-        # Leer el CSV línea por línea para encontrar dónde dice "PRODUCTOS"
-        lines = raw_data.split('\n')
-        skip_rows = 0
-        for i, line in enumerate(lines):
-            if "PRODUCTOS" in line:
-                skip_rows = i
-                break
-                
-        # Volver a cargar el DataFrame saltando las filas basura del inicio
-        listado = pd.read_csv(StringIO(raw_data), skiprows=skip_rows)
+        # Forzar a leer el contenido con codificación UTF-8 para evitar caracteres raros
+        raw_text = respuesta.content.decode('utf-8')
         
-        # Limpiar espacios en los nombres de las columnas
+        # Convertir a tabla de datos
+        listado = pd.read_csv(StringIO(raw_text))
+        
+        # Limpiar espacios en blanco en los nombres de las columnas
         listado.columns = listado.columns.str.strip()
         
-        # Verificar que la columna exista, si no, usar la primera columna disponible
-        col_producto = 'PRODUCTOS' if 'PRODUCTOS' in listado.columns else listado.columns[0]
-        col_costo = 'COSTO' if 'COSTO' in listado.columns else (listado.columns[1] if len(listado.columns) > 1 else listado.columns[0])
-        
-        # Renombrar para trabajar de forma segura
-        listado = listado.rename(columns={col_producto: 'PRODUCTOS_REF', col_costo: 'COSTO_REF'})
-        
-        # Filtrar filas vacías, totales o notas de ingredientes abajo
-        listado = listado.dropna(subset=['PRODUCTOS_REF'])
-        listado['PRODUCTOS_REF'] = listado['PRODUCTOS_REF'].astype(str).str.strip()
-        listado = listado[listado['PRODUCTOS_REF'] != '']
-        listado = listado[~listado['PRODUCTOS_REF'].str.contains('TOTAL|QUESO|JAMON|MAYONESA|PAN|LECHUGA', case=False, na=False)]
-        
-        # Limpiar los precios quitando el símbolo "$" y comas
-        listado['COSTO_LIMPIO'] = listado['COSTO_REF'].astype(str).str.replace('$', '', regex=False)
-        listado['COSTO_LIMPIO'] = listado['COSTO_LIMPIO'].str.replace(',', '', regex=False).str.strip()
-        listado['COSTO_LIMPIO'] = pd.to_numeric(listado['COSTO_LIMPIO'], errors='coerce').fillna(0.0)
+        # Filtrar las filas para quedarnos únicamente con los productos reales
+        if 'PRODUCTOS' in listado.columns:
+            listado = listado.dropna(subset=['PRODUCTOS'])
+            listado['PRODUCTOS'] = listado['PRODUCTOS'].astype(str).str.strip()
+            listado = listado[listado['PRODUCTOS'] != '']
+            listado = listado[~listado['PRODUCTOS'].str.contains('TOTAL|QUESO|JAMON|MAYONESA|PAN|LECHUGA', case=False, na=False)]
+            
+            # Limpiar precios quitando el símbolo "$" y comas
+            if 'COSTO' in listado.columns:
+                listado['COSTO_LIMPIO'] = listado['COSTO'].astype(str).str.replace('$', '', regex=False)
+                listado['COSTO_LIMPIO'] = listado['COSTO_LIMPIO'].str.replace(',', '', regex=False).str.strip()
+                listado['COSTO_LIMPIO'] = pd.to_numeric(listado['COSTO_LIMPIO'], errors='coerce').fillna(0.0)
+            else:
+                listado['COSTO_LIMPIO'] = 0.0
+        else:
+            # Plan de respaldo si por alguna razón cambia el nombre de la columna
+            st.warning("No se encontró la columna 'PRODUCTOS', usando la primera columna disponible.")
+            primera_col = listado.columns[0]
+            listado = listado.rename(columns={primera_col: 'PRODUCTOS'})
+            listado['COSTO_LIMPIO'] = 0.0
             
         return listado
     except Exception as e:
-        st.error(f"Error al procesar las columnas de Google Sheets: {e}")
-        return pd.DataFrame({'PRODUCTOS_REF': ['Error de formato'], 'COSTO_LIMPIO': [0.0]})
+        st.error(f"Error al procesar los datos de la nube: {e}")
+        return pd.DataFrame({'PRODUCTOS': ['Error de formato'], 'COSTO_LIMPIO': [0.0]})
 
 df_productos = cargar_datos()
 
@@ -66,15 +64,14 @@ if 'carrito' not in st.session_state:
 # 2. Sección de Selección de Productos
 st.header("🛒 Agregar a la Cotización")
 
-# Campo opcional para el nombre del cliente
 nombre_cliente = st.text_input("👤 Nombre del Cliente (Opcional):", placeholder="Ej. María López")
 
-lista_productos = df_productos['PRODUCTOS_REF'].tolist()
+lista_productos = df_productos['PRODUCTOS'].tolist()
 producto_seleccionado = st.selectbox("Selecciona un producto:", lista_productos)
 
 # Extraer el precio de forma segura
-filtro_precio = df_productos[df_productos['PRODUCTOS_REF'] == producto_seleccionado]['COSTO_LIMPIO'].values
-precio_sugerido = float(filtro_precio[0]) if len(filtro_precio) > 0 else 0.0
+filtro_precio = df_productos[df_productos['PRODUCTOS'] == producto_seleccionado]['COSTO_LIMPIO'].values
+precio_sugerido = float(filtro_precio) if len(filtro_precio) > 0 else 0.0
 
 col1, col2 = st.columns(2)
 with col1:
@@ -115,7 +112,6 @@ if len(st.session_state.carrito) > 0:
     texto_codificado = urllib.parse.quote(mensaje_wa)
     enlace_whatsapp = f"https://wa.me{texto_codificado}"
     
-    # Botones de acción ocupando el ancho del móvil
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if st.button("🗑️ Limpiar Todo", use_container_width=True):
