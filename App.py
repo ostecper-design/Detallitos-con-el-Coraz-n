@@ -3,19 +3,19 @@ import pandas as pd
 from datetime import datetime
 import requests
 from io import StringIO
+import urllib.parse
 
 # Configuración de la página para móvil
 st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="centered")
 
 st.title("📱 Cotizador en la Nube")
 
-# Enlace de tu Google Sheets (Formateado para exportar directamente cada pestaña)
+# ENLACES CORREGIDOS (con la diagonal '/' correspondiente)
 SHEET_ID = "1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0"
 URL_LISTADO = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=listado"
-URL_COTIZADOR = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=cotizador"
 
 # 1. Cargar base de datos desde Google Sheets
-@st.cache_data(ttl=60)  # Se actualiza cada 60 segundos si haces cambios en tu Drive
+@st.cache_data(ttl=30)  # Se actualiza rápido si cambias precios en Drive
 def cargar_datos():
     try:
         # Descargar los datos desde el enlace de Google
@@ -53,18 +53,15 @@ if 'carrito' not in st.session_state:
 # 2. Sección de Selección de Productos
 st.header("🛒 Agregar a la Cotización")
 
+# Agregar un campo opcional para el nombre del cliente
+nombre_cliente = st.text_input("👤 Nombre del Cliente (Opcional):", placeholder="Ej. María López")
+
 lista_productos = df_productos['PRODUCTOS'].tolist()
 producto_seleccionado = st.selectbox("Selecciona un producto:", lista_productos)
 
-# CORRECCIÓN AQUÍ: Extraer el precio de forma segura tomando solo el primer elemento numérico
+# Extraer el precio de forma segura tomando solo el primer elemento numérico
 filtro_precio = df_productos[df_productos['PRODUCTOS'] == producto_seleccionado]['COSTO_LIMPIO'].values
-if len(filtro_precio) > 0:
-    try:
-        precio_sugerido = float(filtro_precio[0])
-    except:
-        precio_sugerido = 0.0
-else:
-    precio_sugerido = 0.0
+precio_sugerido = float(filtro_precio[0]) if len(filtro_precio) > 0 else 0.0
 
 col1, col2 = st.columns(2)
 with col1:
@@ -92,6 +89,21 @@ if len(st.session_state.carrito) > 0:
     gran_total = df_actual['Total'].sum()
     st.metric(label="Gran Total", value=f"${gran_total:,.2f}")
     
+    # --- CONSTRUIR TEXTO PARA WHATSAPP ---
+    saludo = f"¡Hola! Te comparto la cotización."
+    if nombre_cliente:
+        saludo = f"¡Hola *{nombre_cliente}*! Te comparto tu cotización."
+        
+    mensaje_wa = f"{saludo}\n\n*Detalle del pedido:*\n"
+    for item in st.session_state.carrito:
+        mensaje_wa += f"• {item['Cantidad']}x {item['PRODUCTOS']} - ${item['Total']:,.2f}\n"
+    
+    mensaje_wa += f"\n*Gran Total: ${gran_total:,.2f}*"
+    # Codificar el texto para que la URL de WhatsApp lo acepte de forma segura
+    texto_codificado = urllib.parse.quote(mensaje_wa)
+    enlace_whatsapp = f"https://wa.me{texto_codificado}"
+    
+    # Botones de acción ocupando el ancho del móvil
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if st.button("🗑️ Limpiar Todo", use_container_width=True):
@@ -99,11 +111,10 @@ if len(st.session_state.carrito) > 0:
             st.rerun()
             
     with col_btn2:
-        if st.button("💾 Guardar Cotización", use_container_width=True):
-            st.success("¡Estructura de cotización lista!")
-            st.info("Para habilitar la escritura directa en tu Drive desde el servidor de la nube, daremos el paso final en la plataforma de Streamlit.")
-            st.session_state.carrito = []
-            st.rerun()
+        # Botón con diseño de enlace que abre WhatsApp directamente
+        st.markdown(
+            f'<a href="{enlace_whatsapp}" target="_blank" style="text-decoration:none;"><button style="width:100%; background-color:#25D366; color:white; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">💬 Enviar por WhatsApp</button></a>',
+            unsafe_allow_html=True
+        )
 else:
     st.info("El cotizador está vacío.")
-
