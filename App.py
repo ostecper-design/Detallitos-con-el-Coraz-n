@@ -10,7 +10,7 @@ st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="cent
 st.title("📱 Cotizador en la Nube")
 
 # TU ENLACE CORRECTO CONFIGURADO PARA DESCARGA DIRECTA
-URL_UNIVERSAL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZnZYeCUJkXq3VThyrroJYOxCHiZEgV4RiGxclb2rSjZWAe2wwx8GOjb8wlefj9YsrZp"
+URL_UNIVERSAL = "https://docs.google.com/spreadsheets/d/1k-omOWx7ycJY-Np365lCkby7O9wzTBjESdjNrE0Ple0/edit?gid=0#gid=0"
 # 1. Cargar base de datos de forma directa y limpia
 @st.cache_data(ttl=2)
 def cargar_datos():
