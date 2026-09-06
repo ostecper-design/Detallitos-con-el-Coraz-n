@@ -9,13 +9,13 @@ st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="cent
 
 st.title("📱 Cotizador en la Nube")
 
-# TU ENLACE CORRECTO CONFIGURADO PARA DESCARGA DIRECTA
+# TU ENLACE CORRECTO DE GOOGLE SHEETS
 URL_UNIVERSAL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZnZYeCUJkXq3VThyrroJYOxCHiZEgV4RiGxclb2rSjZWAe2wwx8GOjb8wlefj9YsrZpO6jZMeVAR/pub?output=csv"
+
 # 1. Cargar base de datos de forma directa y limpia
 @st.cache_data(ttl=2)
 def cargar_datos():
     try:
-        # Descarga el CSV directo usando tu enlace público revisado
         respuesta = requests.get(URL_UNIVERSAL)
         raw_text = respuesta.content.decode('utf-8')
         listado = pd.read_csv(StringIO(raw_text))
@@ -23,28 +23,45 @@ def cargar_datos():
         # Limpiar espacios en blanco en los nombres de las columnas
         listado.columns = listado.columns.str.strip()
         
-        if 'PRODUCTOS' in listado.columns:
-            listado = listado.dropna(subset=['PRODUCTOS'])
-            listado['PRODUCTOS'] = listado['PRODUCTOS'].astype(str).str.strip()
-            listado = listado[listado['PRODUCTOS'] != '']
-            listado = listado[~listado['PRODUCTOS'].str.contains('TOTAL|QUESO|JAMON|MAYONESA|PAN|LECHUGA', case=False, na=False)]
+        # CORRECCIÓN DE MAYÚSCULAS: Convertir temporalmente las columnas a mayúsculas para no fallar
+        columnas_mayus = [col.upper() for col in listado.columns]
+        
+        if 'PRODUCTOS' in columnas_mayus:
+            # Encontrar el nombre real de la columna de productos en tu Sheets
+            idx_prod = columnas_mayus.index('PRODUCTOS')
+            col_real_prod = listado.columns[idx_prod]
             
-            # Limpiar precios quitando el símbolo "$" y comas
-            if 'COSTO' in listado.columns:
-                listado['COSTO_LIMPIO'] = listado['COSTO'].astype(str).str.replace('$', '', regex=False)
+            listado = listado.dropna(subset=[col_real_prod])
+            listado[col_real_prod] = listado[col_real_prod].astype(str).str.strip()
+            listado = listado[listado[col_real_prod] != '']
+            listado = listado[~listado[col_real_prod].str.contains('TOTAL|QUESO|JAMON|MAYONESA|PAN|LECHUGA', case=False, na=False)]
+            
+            # Encontrar el nombre real de la columna de costos (buscando COSTO o COSTOS)
+            col_real_costo = None
+            for c in listado.columns:
+                if c.upper() in ['COSTO', 'COSTOS', 'PRECIO', 'PRECIOS']:
+                    col_real_costo = c
+                    break
+            
+            # Si encontró la columna de costos, limpiar el símbolo de pesos y las comas
+            if col_real_costo:
+                listado['COSTO_LIMPIO'] = listado[col_real_costo].astype(str).str.replace('$', '', regex=False)
                 listado['COSTO_LIMPIO'] = listado['COSTO_LIMPIO'].str.replace(',', '', regex=False).str.strip()
                 listado['COSTO_LIMPIO'] = pd.to_numeric(listado['COSTO_LIMPIO'], errors='coerce').fillna(0.0)
             else:
                 listado['COSTO_LIMPIO'] = 0.0
+                
+            # Renombrar la columna principal para que el resto del código funcione uniforme
+            listado = listado.rename(columns={col_real_prod: 'PRODUCTOS'})
         else:
-            # Plan de respaldo por si las columnas vienen distintas
-            primera_col = listado.columns if len(listado.columns) > 0 else 'PRODUCTOS'
+            # Plan de respaldo si por alguna razón no lee las columnas
+            primera_col = listado.columns[0] if len(listado.columns) > 0 else 'PRODUCTOS'
             listado = listado.rename(columns={primera_col: 'PRODUCTOS'})
             listado['COSTO_LIMPIO'] = 0.0
             
         return listado
     except Exception as e:
-        return pd.DataFrame({'PRODUCTOS': ['Error al conectar con Drive'], 'COSTO_LIMPIO': [0.0]})
+        return pd.DataFrame({'PRODUCTOS': ['Error de lectura'], 'COSTO_LIMPIO': [0.0]})
 
 df_productos = cargar_datos()
 
@@ -63,7 +80,10 @@ producto_seleccionado = st.selectbox("Selecciona un producto:", lista_productos)
 # Extraer el precio de forma segura
 try:
     filtro_precio = df_productos[df_productos['PRODUCTOS'] == producto_seleccionado]['COSTO_LIMPIO'].values
-    precio_sugerido = float(filtro_precio) if len(filtro_precio) > 0 else 0.0
+    precio_sugerido = float(filtro_precio[0]) if len(filtro_precio) > 0 else 0.0
+    # Asegurar que si el precio sugerido es 0.0 intente buscar de otra forma
+    if precio_sugerido == 0.0 and len(filtro_precio) > 0:
+        precio_sugerido = float(filtro_precio)
 except:
     precio_sugerido = 0.0
 
