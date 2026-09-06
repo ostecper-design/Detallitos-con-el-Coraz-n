@@ -10,7 +10,7 @@ st.set_page_config(page_title="Cotizador Móvil", page_icon="🧮", layout="cent
 st.title("📱 Cotizador en la Nube")
 
 # DIRECCIÓN PÚBLICA DIRECTA REVISADA
-URL_LIMPIDA = "https://google.com"
+URL_UNIVERSAL = "https://google.com"
 
 # 1. Cargar base de datos de forma directa y limpia
 @st.cache_data(ttl=5)
